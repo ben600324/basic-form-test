@@ -1,0 +1,168 @@
+<?php
+
+/**
+ * @file.
+ *
+ * Module to provide a basic form.
+ */
+
+/**
+*  hook_form_alter(&$form, &$form_state, $form_id)
+*/
+
+function alter_custom_test_form_form_alter(&$form, &$form_state, $form_id) {
+
+  switch ($form_id){
+    case 'custom_test_form':
+      $form['#prefix'] = '<div id="ajax-wrapper">';
+      $form['#suffix'] = '</div>';
+      $form['first_name']['#attributes']['placeholder'] = t('First Name');
+      $form['first_name']['#weight'] = 0;
+      $form['submit']['#weight'] = 3;
+      $form['submit']['#ajax']= array(
+          "callback" => "_alter_custom_form_callback", 
+          "wrapper" => "ajax-wrapper",
+          "effect" => "slide",
+      );
+      $form['table']['#weight'] = 10;
+
+      $form_state['field_deltas'] = isset($form_state['field_deltas']) ? $form_state['field_deltas'] : NULL;
+
+      $field_count = $form_state['field_deltas'];
+      $form['field_container_task'] = array(
+          '#type' => 'fieldset',
+          '#weight' => 0,
+          '#tree' => TRUE,
+          0 => array(
+            'task_title' => array(
+              '#title' => t('Task Title'),
+              '#type' => 'textfield',
+              '#attributes'  => array(
+                 'placeholder' => t('Task'),
+               ),
+                 '#required' => TRUE,
+              ),
+              
+              'task_date' => array(
+                  '#type' => 'date_popup',
+                  //'#title' => t('End Date'),
+                  '#default_value' => date('c'), 
+                  '#date_format' => 'Y-m-d',
+                  '#date_timezone' => date_default_timezone(),
+                  '#date_year_range' => '0:+1',
+                  '#required' => TRUE,
+              ),
+          ),
+          
+          '#weight' => 1,
+          '#prefix' => '<div id="js-ajax-elements-wrapper">',
+          '#suffix' => '</div>',
+      );
+      if(is_array($field_count)){
+          foreach ($field_count as $delta) {
+              $form['field_container_task'][$delta+1]['task_title'] = array(
+                  '#title' => t('Task Title'),
+                  '#type' => 'textfield',
+                  '#attributes'  => array(
+                     'placeholder' => t('Task'),
+                   ),
+                   '#required' => TRUE,
+              );
+
+              $form['field_container_task'][$delta+1]['task_date'] = array(
+                  '#type' => 'date_popup',
+                  //'#title' => t('End Date'),
+                  '#default_value' => date('c'), 
+                  '#date_format' => 'Y-m-d',
+                  '#date_timezone' => date_default_timezone(),
+                  '#date_year_range' => '0:+1',
+                  '#required' => TRUE,
+              );
+
+              $form['field_container_task'][$delta+1]['remove_name'] = array(
+                  '#type' => 'submit',
+                  '#value' => t('-'),
+                  '#limit_validation_errors' => array(),
+                  '#submit' => array('alter_ajax_add_more_remove'),
+                  '#ajax' => array(
+                      'callback' => 'alter_ajax_add_more_remove_callback',
+                      'wrapper' => 'js-ajax-elements-wrapper',
+                  ),
+                  '#weight' => 30,
+                  '#attributes' => array(
+                      'class' => array('button-small'),
+                  ),
+                  '#name' => 'remove_name_' . $delta,
+              );
+          }
+      }
+      if(count($field_count) < 6){
+            $form['field_container_task']['add_name'] = array(
+                '#type' => 'submit',
+                '#value' => t('Add More Task'),
+                '#limit_validation_errors' => array(),
+                '#submit' => array('alter_ajax_add_more_add_one'),
+                '#ajax' => array(
+                    'callback' => 'alter_ajax_add_more_add_one_callback',
+                    'wrapper' => 'js-ajax-elements-wrapper',
+                ),
+                '#attributes' => array(
+                    'class' => array('add-more-button'),
+                ),
+                //'#validate' => array('alter_ajax_add_more_add_one_validate'),
+                '#weight' => 2,
+            );
+      }
+
+    break;
+  } 
+}
+
+
+function alter_ajax_add_more_remove($form, &$form_state) {
+    $delta_remove = $form_state['triggering_element']['#parents'][1];
+    $k = array_search($delta_remove, $form_state['field_deltas']);
+    unset($form_state['field_deltas'][$k]);
+    $form_state['rebuild'] = TRUE;
+}
+
+function alter_ajax_add_more_remove_callback($form, &$form_state) {
+    return $form['field_container_task'];
+}
+
+function alter_ajax_add_more_add_one_callback($form, $form_state) {
+  
+    return $form['field_container_task'];
+}
+
+function alter_ajax_add_more_add_one($form, &$form_state) {
+    $form_state['field_deltas'][] = count($form_state['field_deltas']) > 0 ? max($form_state['field_deltas']) + 1 : 0;
+    $form_state['rebuild'] = TRUE;
+}
+
+function _alter_custom_form_callback($form, &$form_state) {
+  drupal_validate_form('custom_test_form', $form, $form_state);
+  if (form_get_errors()) {
+    $form_state['rebuild'] = TRUE;
+    return $form;
+  }
+  $today = strtotime(date('Y-m-d'));   
+  foreach($form_state['values']['field_container_task'] AS $k => $v){
+    if($v != 'Add More Task'){
+      $all_task_date[] = strtotime($v['task_date']);
+      $my_date = strtotime($v['task_date']);
+      $header[] = $v['task_title'];
+      $date[] = array('data' => $v['task_date'],'align' => 'center');
+      if($my_date < $today){
+        form_set_error('field_container_task]['.$k .'][task_date', t('Please fill valid date!'));
+      }
+    }
+  }
+  if(min($all_task_date) > $today){
+    drupal_set_message(t('Hello @first_name, Thanks for your submit', array('@first_name' => $form_state['values']['first_name'])));
+    $form['table']['#markup'] = theme('table', array('header' => $header, 'rows' => array($date),'sticky' => FALSE));    
+  } 
+  return $form;
+}
+
+
